@@ -1,0 +1,8 @@
+{
+  "name": "CapSense Lab — Capacitive Touch Slider Simulator",
+  "description": "Interactive 3D physical simulator and virtual engineering laboratory for 3- and 6-electrode capacitive touch sliders, signal conditioning, non-idealities, and weighted-centroid position estimation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
