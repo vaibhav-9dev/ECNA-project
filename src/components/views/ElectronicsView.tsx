@@ -155,9 +155,9 @@ function buildWaveformPath(
 }
 
 export const ElectronicsView: React.FC = () => {
-  const { electronics, setElectronics, tickOutput, finger, setFinger, geometry, setTouchMode } =
+  const { electronics, setElectronics, tickOutput, finger, setFinger, geometry, setTouchMode, setActiveSection } =
     useSimulation();
-  const [selectedStage, setSelectedStage] = useState<StageId>('excitation');
+  const [selectedStage, setSelectedStage] = useState<StageId>('readout');
 
   const peakCh = tickOutput.channels[tickOutput.strongestChannelIndex] ?? tickOutput.channels[0];
   const normSig = Math.min(1, Math.max(0, (peakCh?.compensatedWeightPf ?? 0) / 2.2));
@@ -174,7 +174,7 @@ export const ElectronicsView: React.FC = () => {
       case 'electrode':
         return `${peakCh?.label}: ${peakCh?.totalCapacitancePf.toFixed(2)} pF`;
       case 'readout':
-        return `I_pk: ${peakCh?.excitationCurrentUa.toFixed(1)} µA`;
+        return `U1 V_out: ${peakCh?.opAmpOutV.toFixed(2)} V`;
       case 'conditioning':
         return `V_cond: ${peakCh?.conditionedVoltageV.toFixed(2)} V`;
       case 'adc':
@@ -200,8 +200,16 @@ export const ElectronicsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="text-xs font-mono text-amber-300">
-          Conceptual Readout Model · Illustrative Circuit Parameters (Not a SPICE-Validated Op-Amp)
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-xs font-mono text-amber-300">
+            Conceptual Readout Model · Illustrative Op-Amp Parameters (Not SPICE-Validated)
+          </div>
+          <button
+            onClick={() => setActiveSection('circuit-diagram')}
+            className="rounded border border-cyan-500/50 bg-cyan-500/15 px-2.5 py-1 text-xs font-medium text-cyan-200 hover:bg-cyan-500/25"
+          >
+            View Schematic Diagram →
+          </button>
         </div>
       </div>
 
@@ -343,13 +351,13 @@ export const ElectronicsView: React.FC = () => {
 
             <div>
               <div className="flex justify-between text-xs font-mono text-slate-300">
-                <span>Readout Stage Gain</span>
-                <span className="tabular-nums text-cyan-300">{electronics.readoutGain.toFixed(2)} V/pF</span>
+                <span>Post-Stage PGA Multiplier</span>
+                <span className="tabular-nums text-cyan-300">{electronics.readoutGain.toFixed(2)}×</span>
               </div>
               <input
                 type="range"
-                min={0.4}
-                max={2.5}
+                min={0.5}
+                max={3.0}
                 step={0.05}
                 value={electronics.readoutGain}
                 onChange={(e) =>
@@ -357,6 +365,43 @@ export const ElectronicsView: React.FC = () => {
                 }
                 className="mt-1 w-full"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <div className="flex justify-between text-xs font-mono text-slate-300">
+                  <span>Op-Amp Rf</span>
+                  <span className="tabular-nums text-cyan-300">{electronics.feedbackResistanceKOhm} kΩ</span>
+                </div>
+                <input
+                  type="range"
+                  min={50}
+                  max={1000}
+                  step={10}
+                  value={electronics.feedbackResistanceKOhm}
+                  onChange={(e) =>
+                    setElectronics((el) => ({ ...el, feedbackResistanceKOhm: Number(e.target.value) }))
+                  }
+                  className="mt-1 w-full"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs font-mono text-slate-300">
+                  <span>Op-Amp Cf</span>
+                  <span className="tabular-nums text-cyan-300">{electronics.feedbackCapPf.toFixed(1)} pF</span>
+                </div>
+                <input
+                  type="range"
+                  min={1.0}
+                  max={12.0}
+                  step={0.1}
+                  value={electronics.feedbackCapPf}
+                  onChange={(e) =>
+                    setElectronics((el) => ({ ...el, feedbackCapPf: Number(e.target.value) }))
+                  }
+                  className="mt-1 w-full"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-1">
@@ -412,7 +457,7 @@ export const ElectronicsView: React.FC = () => {
                 <th className="py-2 pr-4">Channel</th>
                 <th className="py-2 pr-4">Total C (pF)</th>
                 <th className="py-2 pr-4">I_sense (µA pk)</th>
-                <th className="py-2 pr-4">V_cond (V)</th>
+                <th className="py-2 pr-4">Op-Amp V_out (V)</th>
                 <th className="py-2 pr-4">ADC ({electronics.adcBits}-bit)</th>
                 <th className="py-2">Weight w_i (pF)</th>
               </tr>
@@ -434,7 +479,9 @@ export const ElectronicsView: React.FC = () => {
                     </td>
                     <td className="py-2 pr-4">{ch.totalCapacitancePf.toFixed(3)}</td>
                     <td className="py-2 pr-4">{ch.excitationCurrentUa.toFixed(2)}</td>
-                    <td className="py-2 pr-4">{ch.conditionedVoltageV.toFixed(3)}</td>
+                    <td className={`py-2 pr-4 ${ch.opAmpSaturated ? 'text-amber-300 font-semibold' : ''}`}>
+                      {ch.opAmpOutV.toFixed(3)} {ch.opAmpSaturated ? '(CLIP)' : ''}
+                    </td>
                     <td className="py-2 pr-4">{ch.adcCounts}</td>
                     <td className="py-2">{ch.compensatedWeightPf.toFixed(3)}</td>
                   </tr>

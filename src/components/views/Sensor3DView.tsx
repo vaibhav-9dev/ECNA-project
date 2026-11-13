@@ -41,6 +41,9 @@ export const Sensor3DView: React.FC = () => {
     setFinger,
     touchMode,
     setTouchMode,
+    electronics,
+    setElectronics,
+    setActiveSection,
     explodedFactor,
     setExplodedFactor,
     showFieldLines,
@@ -55,10 +58,12 @@ export const Sensor3DView: React.FC = () => {
 
   const [dockExpanded, setDockExpanded] = useState(true);
   const [telemetryOpen, setTelemetryOpen] = useState(true);
-  const [dockTab, setDockTab] = useState<'interaction' | 'geometry' | 'assembly'>('interaction');
+  const [dockTab, setDockTab] = useState<'interaction' | 'opamp' | 'assembly' | 'geometry'>('interaction');
 
   const { improvedEstimate, channels, strongestChannelIndex } = tickOutput;
+  const peakCh = channels[strongestChannelIndex] ?? channels[0];
   const maxBarPf = 2.6;
+  const adcMax = Math.pow(2, electronics.adcBits) - 1;
 
   return (
     <div
@@ -122,7 +127,7 @@ export const Sensor3DView: React.FC = () => {
 
       {/* Right Live Telemetry Panel (Collapsible, keeps center 3D PCB unobstructed) */}
       {telemetryOpen && (
-        <aside className="absolute top-16 right-4 z-10 w-[290px] max-w-[85vw] rounded-lg border border-slate-800 bg-[#0b111d]/94 p-3.5 shadow-xl">
+        <aside className="absolute top-16 right-4 z-10 max-h-[calc(100%-9.5rem)] w-[300px] max-w-[85vw] overflow-y-auto rounded-lg border border-slate-800 bg-[#0b111d]/94 p-3.5 shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
               Live Sensor Telemetry
@@ -197,7 +202,77 @@ export const Sensor3DView: React.FC = () => {
             })}
           </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2 text-[10px] text-slate-400">
+          {/* Op-Amp AFE Readout Telemetry */}
+          {peakCh && (
+            <div className="mt-3 rounded border border-slate-800 bg-[#070b12]/90 p-2.5">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider">
+                <span className="text-cyan-300">
+                  Op-Amp U1 ({electronics.opAmpTopology === 'tia' ? 'TIA' : 'Integrator'})
+                </span>
+                <button
+                  onClick={() => setActiveSection('circuit-diagram')}
+                  className="text-slate-400 hover:text-cyan-300 underline decoration-slate-700"
+                >
+                  Schematic →
+                </button>
+              </div>
+
+              <div className="mt-1.5 grid grid-cols-3 gap-1.5 font-mono tabular-nums">
+                <div>
+                  <div className="text-[9px] uppercase text-slate-500">I_in ({peakCh.label})</div>
+                  <div className="text-xs font-semibold text-slate-200">
+                    {peakCh.excitationCurrentUa.toFixed(1)} µA
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-500">V_bias (+)</div>
+                  <div className="text-xs font-semibold text-slate-200">
+                    {peakCh.opAmpVirtualGndV.toFixed(2)} V
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] uppercase text-slate-500">U1 V_out</div>
+                  <div
+                    className={`text-xs font-semibold ${
+                      peakCh.opAmpSaturated ? 'text-amber-300' : 'text-cyan-300'
+                    }`}
+                  >
+                    {peakCh.opAmpOutV.toFixed(2)} V
+                  </div>
+                </div>
+              </div>
+
+              {/* Op-Amp Rail Output Bar with V_bias midpoint marker */}
+              <div className="relative mt-2 h-2 w-full overflow-hidden rounded-sm bg-slate-800">
+                <div
+                  className={`h-full transition-[width] duration-75 ${
+                    peakCh.opAmpSaturated ? 'bg-amber-400' : 'bg-cyan-400'
+                  }`}
+                  style={{
+                    width: `${Math.min(100, Math.max(0, (peakCh.opAmpOutV / electronics.vRef) * 100))}%`,
+                  }}
+                />
+                <div
+                  className="absolute inset-y-0 w-0.5 bg-slate-200/80"
+                  style={{ left: `${(peakCh.opAmpVirtualGndV / electronics.vRef) * 100}%` }}
+                  title={`Virtual Ground V_bias = ${peakCh.opAmpVirtualGndV.toFixed(2)} V`}
+                />
+              </div>
+
+              <div className="mt-1.5 flex items-center justify-between font-mono text-[10px] text-slate-400 tabular-nums">
+                <span>
+                  ADC: {peakCh.adcCounts}/{adcMax}
+                </span>
+                <span>
+                  {peakCh.opAmpSaturated
+                    ? 'RAIL CLIP!'
+                    : `Gain ${peakCh.opAmpGainVPerPf.toFixed(2)} V/pF`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-2.5 flex items-center justify-between border-t border-slate-800/80 pt-2 text-[10px] text-slate-400">
             <span>Σw = {improvedEstimate.sumWeightsPf.toFixed(2)} pF</span>
             <span>Overlay: {geometry.overlayThicknessMm.toFixed(1)} mm</span>
           </div>
@@ -230,6 +305,16 @@ export const Sensor3DView: React.FC = () => {
                   Finger &amp; Touch Mode
                 </button>
                 <button
+                  onClick={() => setDockTab('opamp')}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    dockTab === 'opamp'
+                      ? 'bg-cyan-500/20 text-cyan-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Op-Amp Readout
+                </button>
+                <button
                   onClick={() => setDockTab('assembly')}
                   className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
                     dockTab === 'assembly'
@@ -247,7 +332,7 @@ export const Sensor3DView: React.FC = () => {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  PCB Stackup Dimensions
+                  PCB Stackup
                 </button>
               </div>
 
@@ -337,6 +422,148 @@ export const Sensor3DView: React.FC = () => {
                       className="mt-1 w-full"
                     />
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Op-Amp Readout Stage Controls */}
+            {dockTab === 'opamp' && (
+              <div className="mt-2.5 space-y-2">
+                <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-12">
+                  <div className="md:col-span-4">
+                    <div className="mb-1 text-[11px] font-medium text-slate-400">
+                      Op-Amp U1 Topology
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setElectronics((el) => ({ ...el, opAmpTopology: 'tia' }))}
+                        className={`flex-1 rounded border px-2 py-1 text-[11px] font-mono transition-colors ${
+                          electronics.opAmpTopology === 'tia'
+                            ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200'
+                            : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        TIA (Rf || Cf)
+                      </button>
+                      <button
+                        onClick={() =>
+                          setElectronics((el) => ({ ...el, opAmpTopology: 'charge_integrator' }))
+                        }
+                        className={`flex-1 rounded border px-2 py-1 text-[11px] font-mono transition-colors ${
+                          electronics.opAmpTopology === 'charge_integrator'
+                            ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200'
+                            : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        Charge Integrator
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:col-span-8">
+                    <div>
+                      <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                        <span>Feedback Rf</span>
+                        <span className="tabular-nums text-cyan-300">
+                          {electronics.feedbackResistanceKOhm} kΩ
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={50}
+                        max={1000}
+                        step={10}
+                        value={electronics.feedbackResistanceKOhm}
+                        onChange={(e) =>
+                          setElectronics((el) => ({
+                            ...el,
+                            feedbackResistanceKOhm: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                        <span>Feedback Cf</span>
+                        <span className="tabular-nums text-cyan-300">
+                          {electronics.feedbackCapPf.toFixed(1)} pF
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1.0}
+                        max={12.0}
+                        step={0.1}
+                        value={electronics.feedbackCapPf}
+                        onChange={(e) =>
+                          setElectronics((el) => ({
+                            ...el,
+                            feedbackCapPf: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                        <span>Drive V_exc</span>
+                        <span className="tabular-nums text-cyan-300">
+                          {electronics.excitationVoltageV.toFixed(1)} Vpp
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1.0}
+                        max={5.0}
+                        step={0.1}
+                        value={electronics.excitationVoltageV}
+                        onChange={(e) =>
+                          setElectronics((el) => ({
+                            ...el,
+                            excitationVoltageV: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                        <span>Freq f_exc</span>
+                        <span className="tabular-nums text-cyan-300">
+                          {electronics.excitationFreqKHz} kHz
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={50}
+                        max={500}
+                        step={10}
+                        value={electronics.excitationFreqKHz}
+                        onChange={(e) =>
+                          setElectronics((el) => ({
+                            ...el,
+                            excitationFreqKHz: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                  <span>
+                    Illustrative behavioral Op-Amp AFE model (U1 on rear PCB). Adjust Rf or Cf to observe gain and 3.3 V rail clipping.
+                  </span>
+                  <button
+                    onClick={() => setActiveSection('circuit-diagram')}
+                    className="font-mono text-cyan-300 hover:underline"
+                  >
+                    Open Full Circuit Diagram →
+                  </button>
                 </div>
               </div>
             )}

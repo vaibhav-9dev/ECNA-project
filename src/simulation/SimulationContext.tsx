@@ -54,9 +54,13 @@ const DEFAULT_NON_IDEALITIES: NonIdealityParams = {
 const DEFAULT_ELECTRONICS: ElectronicsParams = {
   excitationFreqKHz: 200,
   excitationVoltageV: 3.3,
-  readoutGain: 1.2,
+  readoutGain: 1.4,
   adcBits: 12,
   vRef: 3.3,
+  opAmpTopology: 'tia',
+  feedbackResistanceKOhm: 470,
+  feedbackCapPf: 3.3,
+  opAmpBiasV: 1.65,
 };
 
 const DEFAULT_ALGORITHM: AlgorithmParams = {

@@ -7,6 +7,7 @@ const NAV_ITEMS: { id: NavSection; label: string }[] = [
   { id: 'sensor-3d', label: '3D Sensor' },
   { id: 'working-principle', label: 'Working Principle' },
   { id: 'electronics', label: 'Electronics' },
+  { id: 'circuit-diagram', label: 'Circuit Diagram' },
   { id: 'signal-lab', label: 'Signal Laboratory' },
   { id: 'algorithm-lab', label: 'Algorithm Laboratory' },
   { id: 'experiments', label: 'Experiments' },

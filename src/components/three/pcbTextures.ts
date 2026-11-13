@@ -83,23 +83,32 @@ export function createPcbSilkscreenTexture(
   // Electrode labels above active area
   const layout = computeElectrodeLayout(electrodeCount, sliderLengthMm, gapMm);
   ctx.textAlign = 'center';
-  ctx.font = '700 22px "IBM Plex Mono", monospace';
+  ctx.font = '700 21px "IBM Plex Mono", monospace';
   ctx.fillStyle = '#e2e8f0';
   for (const el of layout) {
     const cx = padLeft + el.centerMm * mmToPx;
-    ctx.fillText(el.label, cx, 114);
+    ctx.fillText(el.label, cx, 120);
   }
+
+  // Rear AFE & Op-Amp silkscreen markings
+  ctx.textAlign = 'left';
+  ctx.font = '600 14px "IBM Plex Mono", monospace';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText('U1 OP-AMP AFE', width * 0.29, 92);
+  ctx.fillText('Rf || Cf', width * 0.45, 92);
+  ctx.fillText('D1 Vout', width * 0.54, 92);
+  ctx.fillText('J1 READOUT', width * 0.65, 92);
 
   // Board identifier silkscreen
   ctx.textAlign = 'left';
   ctx.font = '600 18px "IBM Plex Mono", monospace';
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillText(`CAP-SLIDER-${electrodeCount}CH REV B`, 38, 56);
+  ctx.fillText(`CAP-SLIDER-${electrodeCount}CH REV C`, 36, 52);
 
   ctx.textAlign = 'right';
-  ctx.font = '500 15px "IBM Plex Mono", monospace';
+  ctx.font = '500 14px "IBM Plex Mono", monospace';
   ctx.fillStyle = '#38bdf8';
-  ctx.fillText('ILLUSTRATIVE GEOMETRY', width - 38, 56);
+  ctx.fillText('OP-AMP AFE · ILLUSTRATIVE', width - 36, 52);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

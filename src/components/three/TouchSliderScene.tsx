@@ -108,6 +108,82 @@ function createLabelSprite(text: string, accentHex: string): THREE.Sprite {
 }
 
 /**
+ * Live Op-Amp readout sprite attached above the 3D U1 Op-Amp IC.
+ * Reuses a single canvas/texture and redraws only when formatted text changes.
+ */
+function createLiveOpAmpBadge(): {
+  sprite: THREE.Sprite;
+  update: (text: string, saturated: boolean) => void;
+  dispose: () => void;
+} {
+  const canvas = document.createElement('canvas');
+  canvas.width = 360;
+  canvas.height = 72;
+  const ctx = canvas.getContext('2d')!;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    opacity: 0.96,
+    depthTest: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(2.15, 0.43, 1);
+  sprite.renderOrder = 18;
+
+  let lastKey = '';
+  const update = (text: string, saturated: boolean) => {
+    const key = `${text}|${saturated}`;
+    if (key === lastKey) return;
+    lastKey = key;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = saturated ? 'rgba(69, 10, 10, 0.92)' : 'rgba(7, 11, 18, 0.9)';
+    ctx.strokeStyle = saturated ? '#f59e0b' : '#22d3ee';
+    ctx.lineWidth = 3;
+
+    const r = 10;
+    const x = 4;
+    const y = 6;
+    const w = canvas.width - 8;
+    const h = canvas.height - 12;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = saturated ? '#fde68a' : '#e0f2fe';
+    ctx.font = '600 22px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    tex.needsUpdate = true;
+  };
+
+  update('U1 Vout: 1.65 V', false);
+
+  return {
+    sprite,
+    update,
+    dispose: () => {
+      tex.dispose();
+      mat.dispose();
+    },
+  };
+}
+
+/**
  * Builds an articulated 5-part 3D finger assembly + contact/hover footprint ring.
  */
 function buildFingerAssembly(isSecondary: boolean): {
@@ -364,12 +440,13 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
     const labelEnclosure = createLabelSprite('Enclosure Housing (ABS / Al)', '#64748b');
     const labelGround = createLabelSprite('Bottom Ground Shield (Copper)', '#f59e0b');
     const labelPcb = createLabelSprite('FR-4 PCB Substrate', '#10b981');
-    const labelCopper = createLabelSprite('Copper Electrodes & Connector', '#fb923c');
+    const labelCopper = createLabelSprite('Electrodes, Op-Amp U1 & Header', '#fb923c');
     const labelOverlay = createLabelSprite('Protective Dielectric Overlay', '#22d3ee');
+    const opAmpBadge = createLiveOpAmpBadge();
     enclosureGroup.add(labelEnclosure);
     groundGroup.add(labelGround);
     pcbGroup.add(labelPcb);
-    copperGroup.add(labelCopper);
+    copperGroup.add(labelCopper, opAmpBadge.sprite);
     overlayGroup.add(labelOverlay);
 
     // Pool of conceptual fringing E-field lines (max 30 lines, zero runtime allocations)
@@ -402,11 +479,12 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
     const groundHatchTex = createGroundHatchTexture(maxAniso);
     let silkscreenTex: THREE.CanvasTexture | null = null;
     let padMaterials: THREE.MeshStandardMaterial[] = [];
+    let opAmpLedMat: THREE.MeshStandardMaterial | null = null;
     let clippableMaterials: THREE.Material[] = [];
     let lastGeomKey = '';
     let lastClipEnabled = false;
     let currentOverlayTopY = 0.2;
-    let currentBoardDepth3d = 4.0;
+    let currentBoardDepth3d = 4.5;
 
     const rebuildAssemblyGeometry = () => {
       const g = simRef.current.geometry;
@@ -415,19 +493,19 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
       lastGeomKey = key;
 
       // Clear previous meshes cleanly while keeping label sprites
-      const clearMeshes = (grp: THREE.Group, keepSprite: THREE.Sprite) => {
-        const toRemove = grp.children.filter((c) => c !== keepSprite);
+      const clearMeshes = (grp: THREE.Group, keepObjects: THREE.Object3D[]) => {
+        const toRemove = grp.children.filter((c) => !keepObjects.includes(c));
         for (const c of toRemove) {
           disposeObjectTree(c);
           grp.remove(c);
         }
       };
 
-      clearMeshes(enclosureGroup, labelEnclosure);
-      clearMeshes(groundGroup, labelGround);
-      clearMeshes(pcbGroup, labelPcb);
-      clearMeshes(copperGroup, labelCopper);
-      clearMeshes(overlayGroup, labelOverlay);
+      clearMeshes(enclosureGroup, [labelEnclosure]);
+      clearMeshes(groundGroup, [labelGround]);
+      clearMeshes(pcbGroup, [labelPcb]);
+      clearMeshes(copperGroup, [labelCopper, opAmpBadge.sprite]);
+      clearMeshes(overlayGroup, [labelOverlay]);
 
       if (silkscreenTex) {
         silkscreenTex.dispose();
@@ -435,13 +513,14 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
       }
 
       padMaterials = [];
+      opAmpLedMat = null;
       clippableMaterials = [];
 
       const sliderLen3d = g.sliderLengthMm * MM_TO_3D;
       const boardLenMm = g.sliderLengthMm / 0.832;
       const boardLen3d = boardLenMm * MM_TO_3D;
       const trackWidth3d = g.sliderWidthMm * MM_TO_3D;
-      const boardDepth3d = Math.max(3.6, trackWidth3d + 2.2);
+      const boardDepth3d = Math.max(4.4, trackWidth3d + 2.7);
       currentBoardDepth3d = boardDepth3d;
 
       const pcbThick3d = Math.max(0.08, g.pcbThicknessMm * MM_TO_3D);
@@ -564,6 +643,9 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
       });
       clippableMaterials.push(traceMat);
 
+      const rearZ = -boardDepth3d * 0.5 + 0.56;
+      const busZ = -trackWidth3d * 0.5 - 0.36;
+
       for (const pad of layout) {
         const padX3d = (pad.centerMm - g.sliderLengthMm * 0.5) * MM_TO_3D;
         const padW3d = pad.widthMm * MM_TO_3D;
@@ -586,19 +668,126 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
         padMesh.receiveShadow = true;
         copperGroup.add(padMesh);
 
+        // Individual electrode trace down to MUX/AFE bus
+        const traceLen = Math.max(0.25, Math.abs(busZ) - trackWidth3d * 0.5);
         const traceMesh = new THREE.Mesh(
-          new THREE.BoxGeometry(0.045, copperThick3d * 0.65, 0.72),
+          new THREE.BoxGeometry(0.04, copperThick3d * 0.6, traceLen),
           traceMat
         );
-        traceMesh.position.set(padX3d, yCopperCenter - 0.005, -trackWidth3d * 0.5 - 0.35);
+        traceMesh.position.set(padX3d, yCopperCenter - 0.004, -trackWidth3d * 0.5 - traceLen * 0.5);
         copperGroup.add(traceMesh);
       }
 
-      // Rear 8-Pin Header Connector
+      // Horizontal Copper Sense Bus feeding Op-Amp U1
+      const busSpan = Math.max(2.6, sliderLen3d * 0.65);
+      const senseBusMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(busSpan, copperThick3d * 0.55, 0.045),
+        traceMat
+      );
+      senseBusMesh.position.set(-0.2, yCopperCenter - 0.004, busZ);
+      copperGroup.add(senseBusMesh);
+
+      // Op-Amp Readout AFE IC (U1: SOIC-14) + Feedback Network (Rf || Cf) + Live D1 Output LED
+      const afeX = -boardLen3d * 0.14;
+      const afeGroup = new THREE.Group();
+      afeGroup.position.set(afeX, yCopperCenter, rearZ);
+
+      const icBodyMat = new THREE.MeshStandardMaterial({
+        color: 0x181b22,
+        roughness: 0.45,
+        metalness: 0.12,
+      });
+      clippableMaterials.push(icBodyMat);
+      const icBody = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.14, 0.46), icBodyMat);
+      icBody.position.y = 0.07;
+      icBody.castShadow = true;
+      afeGroup.add(icBody);
+
+      // Pin-1 Orientation Dot
+      const pin1Dot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.038, 0.038, 0.015, 12),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.4 })
+      );
+      pin1Dot.position.set(-0.4, 0.142, 0.14);
+      afeGroup.add(pin1Dot);
+
+      // Metallic Gull-Wing Leads (7 per side)
+      const leadMat = new THREE.MeshStandardMaterial({
+        color: 0xdbeafe,
+        metalness: 0.92,
+        roughness: 0.18,
+      });
+      const leadGeom = new THREE.BoxGeometry(0.055, 0.05, 0.14);
+      for (let l = 0; l < 7; l++) {
+        const lx = (l - 3) * 0.135;
+        for (const side of [-1, 1]) {
+          const lead = new THREE.Mesh(leadGeom, leadMat);
+          lead.position.set(lx, 0.025, side * 0.27);
+          afeGroup.add(lead);
+        }
+      }
+
+      // Trace from Sense Bus into U1 Inverting Input
+      const feedLen = Math.max(0.18, Math.abs(rearZ - busZ) - 0.26);
+      const feedTrace = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, copperThick3d * 0.6, feedLen),
+        traceMat
+      );
+      feedTrace.position.set(-0.18, -0.004, feedLen * 0.5 + 0.25);
+      afeGroup.add(feedTrace);
+
+      // SMD 0805 Feedback Resistor (Rf) & Capacitor (Cf) beside U1
+      const smdCapEndMat = new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        metalness: 0.9,
+        roughness: 0.2,
+      });
+      const buildSmdPart = (xOff: number, zOff: number, bodyHex: number) => {
+        const part = new THREE.Group();
+        part.position.set(xOff, 0.045, zOff);
+        const body = new THREE.Mesh(
+          new THREE.BoxGeometry(0.2, 0.08, 0.11),
+          new THREE.MeshStandardMaterial({ color: bodyHex, roughness: 0.45, metalness: 0.1 })
+        );
+        body.castShadow = true;
+        const capL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.084, 0.116), smdCapEndMat);
+        capL.position.x = -0.095;
+        const capR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.084, 0.116), smdCapEndMat);
+        capR.position.x = 0.095;
+        part.add(body, capL, capR);
+        return part;
+      };
+      // Rf (dark slate resistor) & Cf (ceramic tan capacitor)
+      afeGroup.add(buildSmdPart(0.88, -0.11, 0x1e293b));
+      afeGroup.add(buildSmdPart(0.88, 0.11, 0xb48a5a));
+
+      // Feedback copper loop trace connecting U1 output -> Rf||Cf -> J1 Header
+      const outTrace = new THREE.Mesh(
+        new THREE.BoxGeometry(boardLen3d * 0.34, copperThick3d * 0.6, 0.045),
+        traceMat
+      );
+      outTrace.position.set(0.55 + boardLen3d * 0.16, -0.004, 0.0);
+      afeGroup.add(outTrace);
+
+      // Live D1 Op-Amp Output Status LED
+      opAmpLedMat = new THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        emissive: 0x22d3ee,
+        emissiveIntensity: 0.8,
+        roughness: 0.25,
+      });
+      const ledMesh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.14), opAmpLedMat);
+      ledMesh.position.set(1.28, 0.045, 0.0);
+      afeGroup.add(ledMesh);
+
+      copperGroup.add(afeGroup);
+      opAmpBadge.sprite.position.set(afeX + 0.15, yCopperCenter + 0.56, rearZ);
+
+      // Rear 8-Pin Header Connector (J1 Readout Output)
       const headerGroup = new THREE.Group();
-      headerGroup.position.set(0, yCopperCenter + 0.12, -boardDepth3d * 0.5 + 0.36);
+      headerGroup.position.set(boardLen3d * 0.22, yCopperCenter + 0.12, rearZ);
       const shroudMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(2.3, 0.24, 0.34),
+        new THREE.BoxGeometry(2.2, 0.24, 0.34),
         new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.1 })
       );
       shroudMesh.castShadow = true;
@@ -848,7 +1037,7 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
       const overlaySurfaceY = currentOverlayTopY + dampedExplode * 1.85;
       hitPlaneMesh.position.y = overlaySurfaceY + 0.05;
 
-      // Update Copper Pad Emissive Responses
+      // Update Copper Pad Emissive Responses & Live 3D Op-Amp Readout LED/Badge
       const { channels, strongestChannelIndex, improvedEstimate } = s.tickOutput;
       for (let i = 0; i < padMaterials.length; i++) {
         const ch = channels[i];
@@ -859,6 +1048,21 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
         mat.color.setHex(isPeak ? 0xe59256 : 0xd17840);
         mat.emissive.setHex(isPeak ? 0x06b6d4 : 0x0284c7);
         mat.emissiveIntensity = intensity * (isPeak ? 0.95 : 0.45);
+      }
+
+      const peakCh = channels[strongestChannelIndex] ?? channels[0];
+      if (peakCh) {
+        const vNorm = Math.min(1, Math.max(0, peakCh.opAmpOutV / Math.max(0.5, s.electronics.vRef)));
+        if (opAmpLedMat) {
+          opAmpLedMat.color.setHex(peakCh.opAmpSaturated ? 0xf59e0b : 0x22d3ee);
+          opAmpLedMat.emissive.setHex(peakCh.opAmpSaturated ? 0xf97316 : 0x06b6d4);
+          opAmpLedMat.emissiveIntensity = peakCh.opAmpSaturated ? 1.8 : 0.35 + vNorm * 1.1;
+        }
+        const badgeText = peakCh.opAmpSaturated
+          ? `U1 CLIP: ${peakCh.opAmpOutV.toFixed(2)} V`
+          : `U1 Vout: ${peakCh.opAmpOutV.toFixed(2)} V`;
+        opAmpBadge.update(badgeText, peakCh.opAmpSaturated);
+        opAmpBadge.sprite.material.opacity = s.showCrossSection ? 0.4 : 0.95;
       }
 
       // Update Fingers
@@ -1026,6 +1230,7 @@ export const TouchSliderScene: React.FC<{ className?: string }> = ({ className =
       renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
 
       if (silkscreenTex) silkscreenTex.dispose();
+      opAmpBadge.dispose();
       groundHatchTex.dispose();
       envRT.dispose();
       pmrem.dispose();

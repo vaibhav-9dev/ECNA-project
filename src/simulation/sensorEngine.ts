@@ -431,25 +431,39 @@ export function stepSensorSimulation(
     filterState.maPositionWindow = [];
   }
 
-  // Electronics readout calculation per channel
+  // Electronics & Op-Amp AFE readout calculation per channel (illustrative lumped behavioral model)
   const adcMax = Math.pow(2, electronics.adcBits) - 1;
   const omega = 2 * Math.PI * electronics.excitationFreqKHz * 1e3;
+  const rfOhms = electronics.feedbackResistanceKOhm * 1e3;
+  const cfFarads = electronics.feedbackCapPf * 1e-12;
+
+  // Illustrative Op-Amp feedback impedance |Z_f| = R_f / sqrt(1 + (w * R_f * C_f)^2)
+  const rcFactor = omega * rfOhms * cfFarads;
+  const zfMagOhms = rfOhms / Math.sqrt(1 + rcFactor * rcFactor);
+
+  // Op-Amp effective conversion sensitivity (V / pF)
+  const opAmpGainVPerPf =
+    electronics.opAmpTopology === 'tia'
+      ? omega * (electronics.excitationVoltageV * 0.5) * zfMagOhms * 1e-12 * electronics.readoutGain
+      : (electronics.excitationVoltageV / Math.max(0.5, electronics.feedbackCapPf)) *
+        (electronics.readoutGain / 1.4);
+
+  const vRailMin = 0.05;
+  const vRailMax = Math.max(0.5, electronics.vRef - 0.05);
+  const vBias = Math.min(vRailMax - 0.1, Math.max(vRailMin + 0.1, electronics.opAmpBiasV));
 
   const channels: ElectrodeChannelSnapshot[] = layout.map((pad, i) => {
     const capFarads = totalCaps[i] * 1e-12;
     const iPeakUa = omega * (electronics.excitationVoltageV * 0.5) * capFarads * 1e6;
-    // Conditioned voltage scales with delta capacitance + offset above virtual ground
-    const vCond = Math.min(
-      electronics.vRef,
-      Math.max(
-        0,
-        0.35 +
-          (calibratedDeltas[i] + 0.3) *
-            electronics.readoutGain *
-            (electronics.excitationVoltageV / 3.3) *
-            (0.6 + 0.4 * (electronics.excitationFreqKHz / 250))
-      )
-    );
+
+    // Signal swing above virtual ground V_bias due to calibrated capacitance delta (after baseline cancellation)
+    const opAmpDeltaV = calibratedDeltas[i] * opAmpGainVPerPf;
+    const opAmpIdealOutV = vBias + opAmpDeltaV;
+    const opAmpOutV = Math.min(vRailMax, Math.max(vRailMin, opAmpIdealOutV));
+    const opAmpSaturated = opAmpIdealOutV >= vRailMax || opAmpIdealOutV <= vRailMin;
+
+    // Post-demodulator / conditioning stage tracks op-amp output into ADC input span [0, V_ref]
+    const vCond = Math.min(electronics.vRef, Math.max(0, opAmpOutV));
     const adcCounts = Math.round(Math.min(adcMax, Math.max(0, (vCond / electronics.vRef) * adcMax)));
 
     return {
@@ -469,6 +483,12 @@ export function stepSensorSimulation(
       rawWeightPf: rawWeights[i],
       weightedTermMmPf: pad.centerMm * finalWeights[i],
       excitationCurrentUa: iPeakUa,
+      opAmpVirtualGndV: vBias,
+      opAmpDeltaV,
+      opAmpOutV,
+      opAmpIdealOutV,
+      opAmpGainVPerPf,
+      opAmpSaturated,
       conditionedVoltageV: vCond,
       adcCounts,
     };

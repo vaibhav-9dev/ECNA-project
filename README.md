@@ -20,15 +20,16 @@ npm run build
 
 ## Architecture
 
-All seven laboratory modules share a single synchronized state and physics engine (`src/simulation/sensorEngine.ts` and `src/simulation/SimulationContext.tsx`):
+All eight laboratory modules share a single synchronized state and physics engine (`src/simulation/sensorEngine.ts` and `src/simulation/SimulationContext.tsx`):
 
-1. **3D Sensor** (`Sensor3DView` + `TouchSliderScene`): Interactive PCB assembly (enclosure, ground shield, FR-4 core, 3 or 6 copper electrodes + traces + 8-pin header, protective dielectric overlay, articulated finger). Supports direct pointer dragging along the PCB track, hover/touch/hold/sweep/double-finger modes, exploded view, cross-section clipping plane, and conceptual fringing electric field lines.
+1. **3D Sensor** (`Sensor3DView` + `TouchSliderScene`): Interactive PCB assembly (enclosure, ground shield, FR-4 core, 3 or 6 copper electrodes + sense bus traces + Op-Amp AFE IC `U1` with SMD `Rf || Cf` & live `D1` output LED + 8-pin header, protective dielectric overlay, articulated finger). Supports direct pointer dragging along the PCB track, live Op-Amp readout telemetry and tuning, hover/touch/hold/sweep/double-finger modes, exploded view, cross-section clipping plane, and conceptual fringing electric field lines.
 2. **Working Principle** (`WorkingPrincipleView`): Interactive cross-section diagram and real-time spatial sensitivity profile $S_i(x)$ curves.
-3. **Electronics** (`ElectronicsView`): Interactive 7-stage signal chain (Excitation → Sensor Electrode → Readout → Analog Conditioning → ADC → MCU → Centroid Estimator) with live waveforms and stage inspector.
-4. **Signal Laboratory** (`SignalLabView`): Independent toggles and sliders for channel noise, adjacent-electrode coupling, unequal parasitic capacitances, and baseline drift, with side-by-side clean vs. distorted plots.
-5. **Algorithm Laboratory** (`AlgorithmLabView`): Step-by-step algebraic breakdown of baseline subtraction, coupling deconvolution, noise thresholding, EMA / moving-average filtering, weighted centroid, and synchronized 3-vs-6 electrode comparison.
-6. **Experiments** (`ExperimentsView`): 9 guided lessons and interactive presets (A–G, hover, double-finger) wired directly into the live 3D engine.
-7. **Performance** (`PerformanceView`): Before-vs-after improvement KPIs (MAE, Max Error, False Touches, Missed Touches, Stability $\sigma$), real-time charts, trace replay, and CSV export.
+3. **Electronics** (`ElectronicsView`): Interactive 7-stage signal chain (Excitation → Sensor Electrode → Op-Amp Readout → Analog Conditioning → ADC → MCU → Centroid Estimator) with live waveforms and stage inspector.
+4. **Circuit Diagram** (`CircuitDiagramView`): Interactive electrical schematic diagram showing AC excitation, capacitive pad equivalent ($C_0, C_{par}, \Delta C, C_{couple}$), mid-rail virtual ground ($V_{bias}$), selectable Op-Amp `U1` topology (TIA $R_f \parallel C_f$ or Switched-Cap Charge Integrator), demodulator/LPF, and ADC/MCU stages with live node voltages and clickable explanations.
+5. **Signal Laboratory** (`SignalLabView`): Independent toggles and sliders for channel noise, adjacent-electrode coupling, unequal parasitic capacitances, and baseline drift, with side-by-side clean vs. distorted plots.
+6. **Algorithm Laboratory** (`AlgorithmLabView`): Step-by-step algebraic breakdown of baseline subtraction, coupling deconvolution, noise thresholding, EMA / moving-average filtering, weighted centroid, and synchronized 3-vs-6 electrode comparison.
+7. **Experiments** (`ExperimentsView`): 9 guided lessons and interactive presets (A–G, hover, double-finger) wired directly into the live 3D engine.
+8. **Performance** (`PerformanceView`): Before-vs-after improvement KPIs (MAE, Max Error, False Touches, Missed Touches, Stability $\sigma$), real-time charts, trace replay, and CSV export.
 
 ## Mathematical Model
 

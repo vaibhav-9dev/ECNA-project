@@ -17,10 +17,13 @@ export type NavSection =
   | 'sensor-3d'
   | 'working-principle'
   | 'electronics'
+  | 'circuit-diagram'
   | 'signal-lab'
   | 'algorithm-lab'
   | 'experiments'
   | 'performance';
+
+export type OpAmpTopology = 'tia' | 'charge_integrator';
 
 export interface SensorGeometry {
   electrodeCount: ElectrodeCount;
@@ -55,9 +58,13 @@ export interface NonIdealityParams {
 export interface ElectronicsParams {
   excitationFreqKHz: number; // 50 .. 500 kHz
   excitationVoltageV: number; // 1.0 .. 5.0 Vpp
-  readoutGain: number; // 0.5 .. 3.0 V/pF equivalent stage gain
+  readoutGain: number; // 0.5 .. 3.0 post-stage / PGA gain multiplier
   adcBits: 10 | 12 | 14;
-  vRef: number; // 3.3 V
+  vRef: number; // 3.3 V supply & ADC reference
+  opAmpTopology: OpAmpTopology;
+  feedbackResistanceKOhm: number; // R_f: 50 .. 1000 kOhm
+  feedbackCapPf: number; // C_f: 1.0 .. 12.0 pF
+  opAmpBiasV: number; // Virtual ground V_bias = V_DD / 2 (1.65 V)
 }
 
 export interface AlgorithmParams {
@@ -88,6 +95,12 @@ export interface ElectrodeChannelSnapshot {
   rawWeightPf: number; // Uncalibrated non-negative weight used in raw centroid
   weightedTermMmPf: number; // x_i * w_i
   excitationCurrentUa: number; // Conceptual AC current amplitude
+  opAmpVirtualGndV: number; // Non-inverting reference V_+ ≈ V_- = V_bias (V)
+  opAmpDeltaV: number; // Signal swing ΔV_opamp above V_bias (V)
+  opAmpOutV: number; // Clamped op-amp output voltage (V)
+  opAmpIdealOutV: number; // Unclamped ideal output (V)
+  opAmpGainVPerPf: number; // Effective op-amp sensitivity (V/pF)
+  opAmpSaturated: boolean; // True when op-amp clips near supply rails
   conditionedVoltageV: number; // Analog conditioned stage output
   adcCounts: number; // Quantized ADC reading
 }
